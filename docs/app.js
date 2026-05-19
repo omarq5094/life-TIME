@@ -1,82 +1,3 @@
-const API_URL = "https://script.google.com/macros/s/AKfycbzXAOoiMRpIgju4RMIUZU2ywhJBdDxUFFDCkxi0Cwd1TkuUPIpVuKq9Nu1Cnm1zSqss/exec";
-const USER_KEY = "life-countdown-user";
-
-const STORAGE_KEY = "life-countdown-os-v3";
-const DAY_MS = 24 * 60 * 60 * 1000;
-const DEFAULT_COUNTDOWN_END_TIME = "00:00";
-
-const CATEGORY_META = {
-  productive: { label: "Productive" },
-  health: { label: "Health" },
-  rest: { label: "Rest" },
-  social: { label: "Social" },
-  consumption: { label: "Consumption" },
-  sleep: { label: "Sleep" },
-};
-
-const DEFAULT_ACTIVITIES = [
-  { name: "النوم", hours: 7.5, category: "sleep", isSleepBlock: true },
-  { name: "المذاكرة", hours: 4, category: "productive" },
-  { name: "العمل", hours: 6, category: "productive" },
-  { name: "السوشال", hours: 1.5, category: "consumption" },
-  { name: "النادي", hours: 1, category: "health" },
-  { name: "العائلة", hours: 2, category: "social" },
-  { name: "الترفيه", hours: 2, category: "rest" },
-];
-
-const DEFAULT_TEMPLATES = {
-  "يوم دوام": [
-    { name: "النوم", hours: 7.5, category: "sleep", isSleepBlock: true },
-    { name: "العمل", hours: 8, category: "productive" },
-    { name: "المذاكرة", hours: 2, category: "productive" },
-    { name: "النادي", hours: 1, category: "health" },
-    { name: "العائلة", hours: 2, category: "social" },
-    { name: "راحة", hours: 2, category: "rest" },
-  ],
-  "يوم مذاكرة": [
-    { name: "النوم", hours: 8, category: "sleep", isSleepBlock: true },
-    { name: "مذاكرة عميقة", hours: 5, category: "productive" },
-    { name: "مراجعة", hours: 2, category: "productive" },
-    { name: "نادي", hours: 1, category: "health" },
-    { name: "راحة", hours: 2, category: "rest" },
-    { name: "سوشال", hours: 1, category: "consumption" },
-  ],
-  "يوم إجازة": [
-    { name: "النوم", hours: 8, category: "sleep", isSleepBlock: true },
-    { name: "العائلة", hours: 4, category: "social" },
-    { name: "ترفيه", hours: 3, category: "rest" },
-    { name: "نادي", hours: 1, category: "health" },
-    { name: "قراءة", hours: 1.5, category: "productive" },
-  ],
-};
-
-const $ = (selector) => document.querySelector(selector);
-
-let currentUser = null;
-let saveTimer = null;
-let cloudSaveInterval = null;
-let cloudRefreshInterval = null;
-let isLoadingCloudState = false;
-let isApplyingSessions = false;
-
-async function apiRequest(payload) {
-  const response = await fetch(API_URL, {
-    method: "POST",
-    headers: {
-      "Content-Type": "text/plain;charset=utf-8",
-    },
-    body: JSON.stringify(payload),
-  });
-
-  const text = await response.text();
-
-  try {
-    return JSON.parse(text);
-  } catch {
-    throw new Error("تعذر قراءة رد Google Sheets API.");
-  }
-}
-
 function normalizeUser(rawUser) {
   if (!rawUser) return null;
 
@@ -351,79 +272,6 @@ function applyCloudState(nextState) {
 
 function saveState() {
   saveLocalState();
-
-  if (!isLoadingCloudState && currentUser) {
-    scheduleCloudSave();
-  }
-}
-
-function scheduleCloudSave() {
-  clearTimeout(saveTimer);
-  saveTimer = setTimeout(saveStateToCloud, 1200);
-}
-
-async function saveStateToCloud() {
-  if (!currentUser) return;
-
-  const snapshot = createCloudSnapshot();
-
-  try {
-    const result = await apiRequest({
-      action: "saveState",
-      user_id: currentUser.id,
-      email: currentUser.email,
-      day_key: snapshot.day,
-      data: snapshot,
-    });
-
-    if (!result.ok) {
-      console.error("Google Sheets save failed:", result.message);
-    }
-  } catch (error) {
-    console.error("Google Sheets save failed:", error.message);
-  }
-}
-
-async function loadStateFromCloud() {
-  if (!currentUser) return false;
-
-  const currentDay = cycleKey(new Date(), state.countdownEndTime || DEFAULT_COUNTDOWN_END_TIME);
-
-  try {
-    const result = await apiRequest({
-      action: "loadState",
-      user_id: currentUser.id,
-      day_key: currentDay,
-    });
-
-    if (!result.ok) {
-      console.error("Google Sheets load failed:", result.message);
-      return false;
-    }
-
-    if (result.data) {
-      applyCloudState(result.data);
-      return true;
-    }
-
-    const localUserState = loadLocalStateForCurrentUser();
-    if (localUserState) {
-      applyCloudState(localUserState);
-      await saveStateToCloud();
-    }
-
-    return false;
-  } catch (error) {
-    console.error("Google Sheets load failed:", error.message);
-    return false;
-  }
-}
-
-async function refreshStateFromCloud() {
-  if (!currentUser || isLoadingCloudState) return;
-
-  const loaded = await loadStateFromCloud();
-  if (loaded) render();
 }
 
 function getActivitySessionKey(activity) {
@@ -600,10 +448,6 @@ async function resetAllLocalData() {
   state = normalizeState(createDefaultState());
   saveLocalState();
   render();
-
-  if (currentUser) {
-    await saveStateToCloud();
-  }
 }
 
 function notifyOverBudget(activity) {
@@ -1027,13 +871,16 @@ async function guardDashboard() {
 
   saveCurrentUser(savedUser);
   await loadProfile();
-  await loadStateFromCloud();
+
+  const localUserState = loadLocalStateForCurrentUser();
+  state = localUserState || normalizeState(createDefaultState());
+  saveLocalState();
+
   return true;
 }
 
-async function logout() {
+function logout() {
   pauseAll();
-  await saveStateToCloud();
   localStorage.removeItem(USER_KEY);
   window.location.href = "index.html";
 }
@@ -1045,22 +892,13 @@ async function initApp() {
   render();
   setInterval(render, 1000);
 
-  cloudSaveInterval = setInterval(saveStateToCloud, 10000);
-  cloudRefreshInterval = setInterval(refreshStateFromCloud, 10000);
-
   window.addEventListener("beforeunload", () => {
-    saveStateToCloud();
+    saveLocalState();
   });
 
   document.addEventListener("visibilitychange", () => {
-    if (document.hidden) {
-      saveStateToCloud();
-    } else {
-      refreshStateFromCloud();
-    }
+    if (document.hidden) saveLocalState();
   });
-
-  window.addEventListener("focus", refreshStateFromCloud);
 }
 
 elements.form.addEventListener("submit", (event) => {
