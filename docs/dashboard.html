@@ -1,232 +1,156 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="ar" dir="rtl">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Life Countdown / Time Allocation OS</title>
-    <link rel="stylesheet" href="styles.css" />
-  </head>
-  <body>
-    <main class="app-shell">
-      <section class="account-panel" aria-label="معلومات الحساب">
-        <div>
-          <p class="eyebrow">Account</p>
-          <strong id="accountName">جار التحميل...</strong>
-          <small id="accountEmail">-</small>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dashboard | Life Countdown OS</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <div>
+      <p class="eyebrow">Life Countdown OS</p>
+      <h1>لوحة اليوم</h1>
+    </div>
+    <div class="account-box">
+      <div>
+        <strong id="userName">...</strong>
+        <span id="userEmail">...</span>
+      </div>
+      <button class="ghost-button" id="hardResetButton" type="button">إعادة ضبط</button>
+      <button class="danger-button" id="logoutButton" type="button">Logout</button>
+    </div>
+  </header>
+
+  <main class="dashboard">
+    <section class="hero-counter panel">
+      <div>
+        <p class="eyebrow">المتبقي من اليوم</p>
+        <div class="countdown" id="timeRemaining">00:00:00</div>
+        <p class="muted">النشاط الحالي: <strong id="currentActivity">متوقف</strong></p>
+      </div>
+      <div class="day-progress-wrap">
+        <div class="day-progress">
+          <span id="dayProgressBar"></span>
         </div>
-        <div class="account-actions">
-          <button id="resetAllButton" class="secondary-button danger-button">إعادة ضبط</button>
-          <button id="logoutButton" class="secondary-button">Logout</button>
+        <div class="progress-meta">
+          <span id="cycleStartLabel">--:--</span>
+          <span id="dayProgressLabel">0%</span>
+          <span id="cycleEndLabel">--:--</span>
         </div>
-      </section>
+      </div>
+    </section>
 
-      <section class="top-panel" aria-label="ملخص اليوم">
-        <div class="brand">
-          <span class="status-dot" id="statusDot"></span>
-          <div>
-            <p class="eyebrow">Life Countdown OS</p>
-            <h1>رصيد يومك الآن</h1>
-          </div>
+    <section class="control-grid">
+      <div class="panel">
+        <div class="section-head">
+          <h2>Templates</h2>
+          <button class="ghost-button compact" id="saveTemplateButton" type="button">حفظ الحالي</button>
         </div>
-
-        <div class="day-countdown">
-          <span class="label">المتبقي من اليوم</span>
-          <strong id="dayCountdown">00:00:00</strong>
-          <div class="day-progress" aria-hidden="true">
-            <span id="dayProgress"></span>
-          </div>
+        <div class="template-row">
+          <select id="templateSelect" aria-label="اختيار Template"></select>
+          <button class="primary-button" id="applyTemplateButton" type="button">تطبيق</button>
+          <button class="danger-button" id="deleteTemplateButton" type="button">حذف</button>
         </div>
+      </div>
 
-        <div class="live-activity" id="liveActivity">
-          لا يوجد نشاط يعمل الآن
+      <div class="panel">
+        <div class="section-head">
+          <h2>إضافة نشاط</h2>
         </div>
-      </section>
+        <form class="add-form" id="addActivityForm">
+          <input id="activityName" type="text" placeholder="اسم النشاط" required>
+          <select id="activityCategory" aria-label="التصنيف">
+            <option value="productive">productive</option>
+            <option value="consumption">consumption</option>
+            <option value="health">health</option>
+            <option value="social">social</option>
+            <option value="rest">rest</option>
+            <option value="sleep">sleep</option>
+          </select>
+          <input id="activityBudget" type="number" min="0.25" step="0.25" placeholder="ساعات" required>
+          <button class="primary-button" type="submit">إضافة</button>
+        </form>
+      </div>
 
-      <section class="dashboard-grid">
-        <aside class="control-panel" aria-label="إعدادات الأنشطة">
-          <div class="panel-heading">
-            <h2>توزيع 24 ساعة</h2>
-            <button class="icon-button" id="resetDayButton" title="إعادة ضبط اليوم" aria-label="إعادة ضبط اليوم">
-              ↺
-            </button>
-          </div>
-
-          <div class="template-panel">
-            <h2>Templates</h2>
-            <label>
-              القالب
-              <select id="templateSelect">
-                <option value="">اختر Template</option>
-              </select>
-            </label>
-            <div class="template-actions">
-              <button type="button" id="applyTemplateButton" class="secondary-button">تطبيق</button>
-              <button type="button" id="saveTemplateButton" class="secondary-button">حفظ الحالي</button>
-              <button type="button" id="deleteTemplateButton" class="secondary-button danger-button">حذف</button>
-            </div>
-          </div>
-
-          <form id="activityForm" class="activity-form">
-            <label>
-              النشاط
-              <input id="activityName" type="text" maxlength="22" placeholder="مثال: قراءة" required />
-            </label>
-            <label>
-              الساعات
-              <input id="activityHours" type="number" min="0.25" max="24" step="0.25" placeholder="1.5" required />
-            </label>
-            <label>
-              التصنيف
-              <select id="activityCategory" required>
-                <option value="productive">Productive</option>
-                <option value="health">Health</option>
-                <option value="rest">Rest</option>
-                <option value="social">Social</option>
-                <option value="consumption">Consumption</option>
-                <option value="sleep">Sleep</option>
-              </select>
-            </label>
-            <button type="submit">إضافة</button>
-          </form>
-
-          <div class="sleep-panel">
-            <div class="panel-heading">
-              <h2>Sleep Block</h2>
-              <label class="switch-row">
-                <input id="sleepEnabled" type="checkbox" />
-                <span>تفعيل</span>
-              </label>
-            </div>
-
-            <div class="sleep-grid">
-              <label>
-                وقت النوم
-                <input id="sleepStart" type="time" value="23:00" />
-              </label>
-              <label>
-                الاستيقاظ
-                <input id="sleepEnd" type="time" value="07:00" />
-              </label>
-            </div>
-
-            <p id="sleepSummary">Sleep Block غير مفعل.</p>
-          </div>
-
-          <div class="countdown-settings">
-            <div>
-              <h2>نهاية العداد</h2>
-              <p id="resetCycleInfo">ينتهي العداد عند 12:00 صباحًا.</p>
-            </div>
-
-            <form id="countdownEndTimeForm" class="time-form">
-              <label>
-                وقت النهاية
-                <input id="countdownEndTime" type="time" value="00:00" required />
-              </label>
-              <button type="submit">تطبيق</button>
-            </form>
-
-            <div class="quick-times" aria-label="اختصارات وقت نهاية العداد">
-              <button type="button" data-end-time="00:00">12:00 ص</button>
-              <button type="button" data-end-time="08:00">8:00 ص</button>
-              <button type="button" data-end-time="06:00">6:00 ص</button>
-            </div>
-          </div>
-
-          <div class="allocation-summary">
-            <div>
-              <span>المخصص</span>
-              <strong id="allocatedHours">0h</strong>
-            </div>
-            <div>
-              <span>المتاح</span>
-              <strong id="freeHours">24h</strong>
-            </div>
-          </div>
-
-          <div class="report-box">
-            <h2>كيف قضيت يومك؟</h2>
-            <p id="dailyReport">ابدأ نشاطًا حتى يظهر التقرير بشكل حي.</p>
-          </div>
-        </aside>
-
-        <section class="activities-area" aria-label="الأنشطة اليومية">
-          <div class="toolbar">
-            <div>
-              <p class="eyebrow">Live Allocation</p>
-              <h2>أنشطة اليوم</h2>
-            </div>
-            <button id="pauseAllButton" class="secondary-button">Pause All</button>
-          </div>
-          <div class="activity-list" id="activityList"></div>
-        </section>
-      </section>
-
-      <section class="insights">
-        <div>
-          <span class="metric-label">Streak</span>
-          <strong id="streakValue">0</strong>
-          <small>أيام مسجلة</small>
+      <div class="panel">
+        <div class="section-head">
+          <h2>Sleep Block</h2>
+          <label class="switch">
+            <input id="sleepEnabled" type="checkbox">
+            <span></span>
+          </label>
         </div>
-        <div>
-          <span class="metric-label">الأكثر استهلاكًا</span>
-          <strong id="topActivity">-</strong>
-          <small>حسب استخدام اليوم</small>
+        <div class="sleep-grid">
+          <label>وقت النوم <input id="sleepStart" type="time"></label>
+          <label>الاستيقاظ <input id="sleepEnd" type="time"></label>
         </div>
-        <div>
-          <span class="metric-label">الأسبوع</span>
-          <strong id="weeklyTotal">0h</strong>
-          <small>وقت تم تتبعه</small>
+      </div>
+
+      <div class="panel">
+        <div class="section-head">
+          <h2>نهاية العداد</h2>
         </div>
-      </section>
-
-      <section class="analysis-panel" aria-label="تحليل اليوم">
-        <div class="analysis-heading">
-          <div>
-            <p class="eyebrow">Daily Analysis</p>
-            <h2>تحليل اليوم</h2>
-          </div>
-          <span id="analysisScore">0%</span>
+        <div class="template-row">
+          <select id="countdownPreset" aria-label="نهاية اليوم">
+            <option value="00:00">00:00</option>
+            <option value="06:00">06:00</option>
+            <option value="08:00">08:00</option>
+            <option value="custom">مخصص</option>
+          </select>
+          <input id="countdownEndTime" type="time">
         </div>
+      </div>
 
-        <div class="analysis-grid" id="analysisCards"></div>
-
-        <div class="analysis-summary">
-          <h2>قراءة سريعة</h2>
-          <ul id="analysisTips"></ul>
+      <div class="panel">
+        <div class="section-head">
+          <h2>ملخص المخصص والمتاح</h2>
+          <button class="ghost-button compact" id="resetTodayButton" type="button">إعادة ضبط اليوم</button>
         </div>
-      </section>
-    </main>
-
-    <template id="activityTemplate">
-      <article class="activity-card">
-        <div class="card-head">
-          <div>
-            <h3></h3>
-            <span class="budget"></span>
-          </div>
-          <button class="delete-button" title="حذف النشاط" aria-label="حذف النشاط">×</button>
+        <div class="stats-line">
+          <span>المخصص <strong id="budgetTotal">0h</strong></span>
+          <span>المتاح <strong id="budgetAvailable">0h</strong></span>
+          <span>المستخدم <strong id="usedTotal">0h</strong></span>
         </div>
+      </div>
 
-        <span class="category-badge"></span>
-
-        <div class="time-left">00:00:00</div>
-
-        <div class="progress-ring" aria-hidden="true">
-          <svg viewBox="0 0 120 120">
-            <circle class="track" cx="60" cy="60" r="52"></circle>
-            <circle class="fill" cx="60" cy="60" r="52"></circle>
-          </svg>
-          <span class="percent">0%</span>
+      <div class="panel">
+        <div class="section-head">
+          <h2>كيف قضيت يومك؟</h2>
+          <button class="warning-button compact" id="pauseAllButton" type="button">Pause All</button>
         </div>
+        <p id="quickReport" class="quick-report">ابدأ نشاطًا لترى التقرير.</p>
+      </div>
+    </section>
 
-        <div class="card-actions">
-          <button class="start-button">Start</button>
-          <span class="state-label">متوقف</span>
-        </div>
-      </article>
-    </template>
+    <section class="activity-section">
+      <div class="section-head">
+        <h2>الأنشطة</h2>
+        <p class="muted" id="activityCount">0 نشاط</p>
+      </div>
+      <div class="activities-grid" id="activitiesGrid"></div>
+    </section>
 
-    <script src="app.js"></script>
-  </body>
+    <section class="mini-indicators">
+      <div class="panel metric"><span>Streak</span><strong id="streakValue">0</strong></div>
+      <div class="panel metric"><span>الأكثر استهلاكًا</span><strong id="topActivity">-</strong></div>
+      <div class="panel metric"><span>الأسبوع</span><strong id="weekSummary">0h</strong></div>
+    </section>
+
+    <section class="analysis panel">
+      <div class="section-head">
+        <h2>تحليل اليوم</h2>
+        <div class="score-pill"><span>Score</span><strong id="scoreValue">0</strong></div>
+      </div>
+      <div class="analysis-grid" id="analysisGrid"></div>
+      <div class="advice-box">
+        <h3>قراءة سريعة</h3>
+        <ul id="adviceList"></ul>
+      </div>
+    </section>
+  </main>
+
+  <div class="toast" id="toast" aria-live="polite"></div>
+  <script src="app.js"></script>
+</body>
 </html>
