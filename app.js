@@ -1,5 +1,45 @@
-const STORAGE_KEY = "life-countdown-os-v1";
+const STORAGE_KEY = "life-countdown-os-v2";
 const DAY_MS = 24 * 60 * 60 * 1000;
+const DEFAULT_COUNTDOWN_END_TIME = "00:00";
+
+function normalizeTime(value) {
+  return /^\d{2}:\d{2}$/.test(value) ? value : DEFAULT_COUNTDOWN_END_TIME;
+}
+
+function getTimeParts(timeText) {
+  const [hours, minutes] = normalizeTime(timeText).split(":").map(Number);
+  return { hours, minutes };
+}
+
+function getCycleEnd(now = new Date(), endTime = DEFAULT_COUNTDOWN_END_TIME) {
+  const { hours, minutes } = getTimeParts(endTime);
+  const end = new Date(now);
+  end.setHours(hours, minutes, 0, 0);
+
+  if (now.getTime() >= end.getTime()) {
+    end.setDate(end.getDate() + 1);
+  }
+
+  return end;
+}
+
+function getCycleStart(now = new Date(), endTime = DEFAULT_COUNTDOWN_END_TIME) {
+  const end = getCycleEnd(now, endTime);
+  return new Date(end.getTime() - DAY_MS);
+}
+
+function cycleKey(date = new Date(), endTime = DEFAULT_COUNTDOWN_END_TIME) {
+  const cycleStart = getCycleStart(date, endTime);
+  return todayKey(cycleStart);
+}
+
+function formatArabicClock(timeText) {
+  const { hours, minutes } = getTimeParts(timeText);
+  const period = hours >= 12 ? "م" : "ص";
+  const displayHours = hours % 12 || 12;
+  return `${displayHours}:${String(minutes).padStart(2, "0")} ${period}`;
+}
+
 const DEFAULT_ACTIVITIES = [
   { name: "النوم", hours: 7.5 },
   { name: "المذاكرة", hours: 4 },
@@ -32,6 +72,10 @@ const elements = {
   weeklyTotal: $("#weeklyTotal"),
   pauseAllButton: $("#pauseAllButton"),
   resetDayButton: $("#resetDayButton"),
+  countdownEndTimeForm: $("#countdownEndTimeForm"),
+  countdownEndTimeInput: $("#countdownEndTime"),
+  resetCycleInfo: $("#resetCycleInfo"),
+  quickTimeButtons: document.querySelectorAll("[data-end-time]"),
 };
 
 function todayKey(date = new Date()) {
@@ -55,15 +99,18 @@ function createActivity({ name, hours }) {
 
 function loadState() {
   const fallback = {
-    day: todayKey(),
+    day: cycleKey(new Date(), DEFAULT_COUNTDOWN_END_TIME),
     streak: 0,
     history: {},
+    countdownEndTime: DEFAULT_COUNTDOWN_END_TIME,
     activities: DEFAULT_ACTIVITIES.map(createActivity),
   };
 
   try {
     const saved = JSON.parse(localStorage.getItem(STORAGE_KEY));
     if (!saved) return fallback;
+    saved.countdownEndTime = normalizeTime(saved.countdownEndTime || DEFAULT_COUNTDOWN_END_TIME);
+    saved.history = saved.history || {};
     return rolloverDay(saved);
   } catch {
     return fallback;
@@ -75,7 +122,8 @@ function saveState() {
 }
 
 function rolloverDay(saved) {
-  const currentDay = todayKey();
+  saved.countdownEndTime = normalizeTime(saved.countdownEndTime || DEFAULT_COUNTDOWN_END_TIME);
+  const currentDay = cycleKey(new Date(), saved.countdownEndTime);
   if (saved.day === currentDay) return saved;
 
   const endedAt = Date.now();
@@ -198,6 +246,21 @@ function requestNotificationPermission() {
   }
 }
 
+function setCountdownEndTime(value) {
+  const nextEndTime = normalizeTime(value);
+  pauseAll();
+
+  state.countdownEndTime = nextEndTime;
+  state.day = cycleKey(new Date(), nextEndTime);
+  state.activities = state.activities.map((activity) => ({
+    ...activity,
+    warned: false,
+  }));
+
+  saveState();
+  render();
+}
+
 function getWeekTotal() {
   const entries = Object.entries(state.history || {}).slice(-6);
   const historyTotal = entries.reduce((sum, [, day]) => sum + day.totalUsed, 0);
@@ -228,20 +291,32 @@ function buildReport(now) {
   return `تتبعت اليوم ${formatTime(tracked)}. أعلى نشاط حتى الآن: ${top.name} بنسبة ${Math.round((top.used / top.budget) * 100)}%.`;
 }
 
+function isEditingCountdownEndTime() {
+  return document.activeElement === elements.countdownEndTimeInput;
+}
+
 function render() {
   const now = Date.now();
   state = rolloverDay(state);
   state.activities = state.activities.map(notifyOverBudget);
 
-  const startOfDay = new Date();
-  startOfDay.setHours(0, 0, 0, 0);
-  const elapsedDay = now - startOfDay.getTime();
-  const remainingDay = DAY_MS - elapsedDay;
+  const nowDate = new Date(now);
+  const cycleEnd = getCycleEnd(nowDate, state.countdownEndTime);
+  const cycleStart = getCycleStart(nowDate, state.countdownEndTime);
+  const elapsedDay = now - cycleStart.getTime();
+  const remainingDay = cycleEnd.getTime() - now;
   const dayPercent = Math.min(100, Math.max(0, (elapsedDay / DAY_MS) * 100));
   const active = state.activities.find((activity) => activity.runningSince);
 
   elements.dayCountdown.textContent = formatTime(remainingDay);
   elements.dayProgress.style.width = `${dayPercent}%`;
+  if (!isEditingCountdownEndTime()) {
+    elements.countdownEndTimeInput.value = state.countdownEndTime;
+  }
+  elements.resetCycleInfo.textContent = `ينتهي العداد عند ${formatArabicClock(state.countdownEndTime)}، وبعدها يبدأ يوم تتبع جديد.`;
+  elements.quickTimeButtons.forEach((button) => {
+    button.classList.toggle("active", button.dataset.endTime === state.countdownEndTime);
+  });
   elements.statusDot.classList.toggle("active", Boolean(active));
   elements.liveActivity.textContent = active
     ? `أنت الآن في: ${active.name} • ${formatTime(currentUsed(active, now))} مستخدم`
@@ -312,6 +387,26 @@ elements.form.addEventListener("submit", (event) => {
 
 elements.pauseAllButton.addEventListener("click", pauseAll);
 elements.resetDayButton.addEventListener("click", resetDay);
+elements.countdownEndTimeForm.addEventListener("submit", (event) => {
+  event.preventDefault();
+  setCountdownEndTime(elements.countdownEndTimeInput.value);
+});
+
+elements.countdownEndTimeInput.addEventListener("change", () => {
+  setCountdownEndTime(elements.countdownEndTimeInput.value);
+});
+
+elements.countdownEndTimeInput.addEventListener("blur", () => {
+  if (elements.countdownEndTimeInput.value !== state.countdownEndTime) {
+    setCountdownEndTime(elements.countdownEndTimeInput.value);
+  } else {
+    render();
+  }
+});
+
+elements.quickTimeButtons.forEach((button) => {
+  button.addEventListener("click", () => setCountdownEndTime(button.dataset.endTime));
+});
 
 render();
 setInterval(render, 1000);
