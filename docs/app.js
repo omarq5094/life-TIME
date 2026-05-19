@@ -1,6 +1,5 @@
-const SUPABASE_URL = "https://ajqwioyahkmmvhmfetus.supabase.co";
-const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_73l7upx07nFZ3dVu-s9KAQ_7wm7GNWa";
-const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
+const API_URL = "https://script.google.com/macros/s/AKfycbzXAOoiMRpIgju4RMIUZU2ywhJBdDxUFFDCkxi0Cwd1TkuUPIpVuKq9Nu1Cnm1zSqss/exec";
+const USER_KEY = "life-countdown-user";
 
 const STORAGE_KEY = "life-countdown-os-v3";
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -59,6 +58,50 @@ let cloudSaveInterval = null;
 let cloudRefreshInterval = null;
 let isLoadingCloudState = false;
 let isApplyingSessions = false;
+
+async function apiRequest(payload) {
+  const response = await fetch(API_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "text/plain;charset=utf-8",
+    },
+    body: JSON.stringify(payload),
+  });
+
+  const text = await response.text();
+
+  try {
+    return JSON.parse(text);
+  } catch {
+    throw new Error("تعذر قراءة رد Google Sheets API.");
+  }
+}
+
+function normalizeUser(rawUser) {
+  if (!rawUser) return null;
+
+  return {
+    id: rawUser.id || rawUser.user_id,
+    user_id: rawUser.user_id || rawUser.id,
+    name: rawUser.name || rawUser.display_name || "مستخدم",
+    email: rawUser.email || "",
+  };
+}
+
+function getSavedUser() {
+  try {
+    return normalizeUser(JSON.parse(localStorage.getItem(USER_KEY)));
+  } catch {
+    return null;
+  }
+}
+
+function saveCurrentUser(user) {
+  currentUser = normalizeUser(user);
+  if (currentUser) {
+    localStorage.setItem(USER_KEY, JSON.stringify(currentUser));
+  }
+}
 
 let state = loadState();
 
@@ -323,19 +366,21 @@ async function saveStateToCloud() {
   if (!currentUser) return;
 
   const snapshot = createCloudSnapshot();
-  const payload = {
-    user_id: currentUser.id,
-    day_key: snapshot.day,
-    data: snapshot,
-    updated_at: new Date().toISOString(),
-  };
 
-  const { error } = await supabaseClient
-    .from("user_day_state")
-    .upsert(payload, { onConflict: "user_id,day_key" });
+  try {
+    const result = await apiRequest({
+      action: "saveState",
+      user_id: currentUser.id,
+      email: currentUser.email,
+      day_key: snapshot.day,
+      data: snapshot,
+    });
 
-  if (error) {
-    console.error("Cloud save failed:", error.message);
+    if (!result.ok) {
+      console.error("Google Sheets save failed:", result.message);
+    }
+  } catch (error) {
+    console.error("Google Sheets save failed:", error.message);
   }
 }
 
@@ -344,30 +389,34 @@ async function loadStateFromCloud() {
 
   const currentDay = cycleKey(new Date(), state.countdownEndTime || DEFAULT_COUNTDOWN_END_TIME);
 
-  const { data, error } = await supabaseClient
-    .from("user_day_state")
-    .select("data, updated_at")
-    .eq("user_id", currentUser.id)
-    .eq("day_key", currentDay)
-    .maybeSingle();
+  try {
+    const result = await apiRequest({
+      action: "loadState",
+      user_id: currentUser.id,
+      day_key: currentDay,
+    });
 
-  if (error) {
-    console.error("Cloud load failed:", error.message);
+    if (!result.ok) {
+      console.error("Google Sheets load failed:", result.message);
+      return false;
+    }
+
+    if (result.data) {
+      applyCloudState(result.data);
+      return true;
+    }
+
+    const localUserState = loadLocalStateForCurrentUser();
+    if (localUserState) {
+      applyCloudState(localUserState);
+      await saveStateToCloud();
+    }
+
+    return false;
+  } catch (error) {
+    console.error("Google Sheets load failed:", error.message);
     return false;
   }
-
-  if (data?.data) {
-    applyCloudState(data.data);
-    return true;
-  }
-
-  const localUserState = loadLocalStateForCurrentUser();
-  if (localUserState) {
-    applyCloudState(localUserState);
-    await saveStateToCloud();
-  }
-
-  return false;
 }
 
 async function refreshStateFromCloud() {
@@ -400,63 +449,15 @@ async function loadSessionsFromCloud() {
 }
 
 async function getOpenSession() {
-  if (!currentUser) return null;
-
-  const dayKey = cycleKey(new Date(), state.countdownEndTime || DEFAULT_COUNTDOWN_END_TIME);
-  const { data, error } = await supabaseClient
-    .from("activity_sessions")
-    .select("id, activity_id, activity_name, started_at")
-    .eq("user_id", currentUser.id)
-    .eq("day_key", dayKey)
-    .is("ended_at", null)
-    .maybeSingle();
-
-  if (error) {
-    console.error("Open session load failed:", error.message);
-    return null;
-  }
-
-  return data || null;
+  return null;
 }
 
 async function closeOpenSession() {
-  const openSession = await getOpenSession();
-  if (!openSession) return;
-
-  const endedAt = new Date();
-  const durationMs = Math.max(0, endedAt.getTime() - new Date(openSession.started_at).getTime());
-
-  const { error } = await supabaseClient
-    .from("activity_sessions")
-    .update({
-      ended_at: endedAt.toISOString(),
-      duration_ms: durationMs,
-    })
-    .eq("id", openSession.id)
-    .eq("user_id", currentUser.id);
-
-  if (error) {
-    console.error("Session close failed:", error.message);
-  }
+  return;
 }
 
 async function openSessionForActivity(activity) {
-  if (!currentUser || !activity) return;
-
-  const dayKey = cycleKey(new Date(), state.countdownEndTime || DEFAULT_COUNTDOWN_END_TIME);
-  const { error } = await supabaseClient
-    .from("activity_sessions")
-    .insert({
-      user_id: currentUser.id,
-      activity_id: getActivitySessionKey(activity),
-      activity_name: activity.name,
-      day_key: dayKey,
-    });
-
-  if (error) {
-    console.error("Session start failed:", error.message);
-    alert("تعذر تشغيل النشاط. حدّث الصفحة وحاول مرة أخرى.");
-  }
+  return;
 }
 
 function rolloverDay(saved) {
@@ -1013,34 +1014,18 @@ async function loadProfile() {
   if (!currentUser) return;
 
   elements.accountEmail.textContent = currentUser.email || "-";
-
-  const { data, error } = await supabaseClient
-    .from("profiles")
-    .select("display_name")
-    .eq("id", currentUser.id)
-    .maybeSingle();
-
-  if (error) {
-    console.error("Profile load failed:", error.message);
-  }
-
-  const fallbackName =
-    currentUser.user_metadata?.display_name ||
-    currentUser.email ||
-    "مستخدم";
-
-  elements.accountName.textContent = data?.display_name || fallbackName;
+  elements.accountName.textContent = currentUser.name || currentUser.email || "مستخدم";
 }
 
 async function guardDashboard() {
-  const { data } = await supabaseClient.auth.getSession();
+  const savedUser = getSavedUser();
 
-  if (!data.session) {
+  if (!savedUser) {
     window.location.href = "index.html";
     return false;
   }
 
-  currentUser = data.session.user;
+  saveCurrentUser(savedUser);
   await loadProfile();
   await loadStateFromCloud();
   return true;
@@ -1049,7 +1034,7 @@ async function guardDashboard() {
 async function logout() {
   pauseAll();
   await saveStateToCloud();
-  await supabaseClient.auth.signOut();
+  localStorage.removeItem(USER_KEY);
   window.location.href = "index.html";
 }
 

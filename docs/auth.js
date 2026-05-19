@@ -1,7 +1,5 @@
-const SUPABASE_URL = "https://ajqwioyahkmmvhmfetus.supabase.co";
-const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_73l7upx07nFZ3dVu-s9KAQ_7wm7GNWa";
-
-const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
+const API_URL = "https://script.google.com/macros/s/AKfycbzXAOoiMRpIgju4RMIUZU2ywhJBdDxUFFDCkxi0Cwd1TkuUPIpVuKq9Nu1Cnm1zSqss/exec";
+const USER_KEY = "life-countdown-user";
 
 const authForm = document.querySelector("#authForm");
 const nameField = document.querySelector("#nameField");
@@ -33,9 +31,44 @@ function showMessage(message, type = "info") {
   authMessage.dataset.type = type;
 }
 
-async function redirectIfLoggedIn() {
-  const { data } = await supabaseClient.auth.getSession();
-  if (data.session) {
+async function apiRequest(payload) {
+  const response = await fetch(API_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "text/plain;charset=utf-8",
+    },
+    body: JSON.stringify(payload),
+  });
+
+  const text = await response.text();
+
+  try {
+    return JSON.parse(text);
+  } catch {
+    throw new Error("تعذر قراءة رد السيرفر. تأكد من نشر Google Apps Script كـ Web App.");
+  }
+}
+
+function saveUser(user) {
+  localStorage.setItem(USER_KEY, JSON.stringify({
+    id: user.user_id || user.id,
+    user_id: user.user_id || user.id,
+    name: user.name || user.display_name || "مستخدم",
+    email: user.email,
+  }));
+}
+
+function getSavedUser() {
+  try {
+    return JSON.parse(localStorage.getItem(USER_KEY));
+  } catch {
+    return null;
+  }
+}
+
+function redirectIfLoggedIn() {
+  const user = getSavedUser();
+  if (user?.id || user?.user_id) {
     window.location.href = "dashboard.html";
   }
 }
@@ -46,7 +79,7 @@ showRegisterButton.addEventListener("click", () => setMode("register"));
 authForm.addEventListener("submit", async (event) => {
   event.preventDefault();
 
-  const email = emailInput.value.trim();
+  const email = emailInput.value.trim().toLowerCase();
   const password = passwordInput.value;
   const displayName = displayNameInput.value.trim();
 
@@ -54,42 +87,26 @@ authForm.addEventListener("submit", async (event) => {
   showMessage("جار التنفيذ...");
 
   try {
-    if (authMode === "register") {
-      const { data, error } = await supabaseClient.auth.signUp({
-        email,
-        password,
-        options: {
-          data: {
-            display_name: displayName,
-          },
-        },
-      });
+    const payload = authMode === "register"
+      ? {
+          action: "register",
+          name: displayName,
+          email,
+          password,
+        }
+      : {
+          action: "login",
+          email,
+          password,
+        };
 
-      if (error) throw error;
+    const result = await apiRequest(payload);
 
-      if (data.user) {
-        await supabaseClient.from("profiles").upsert({
-          id: data.user.id,
-          display_name: displayName,
-        });
-      }
-
-      if (data.session) {
-        window.location.href = "dashboard.html";
-        return;
-      }
-
-      showMessage("تم إنشاء الحساب. إذا كان تأكيد البريد مفعّلًا، افتح Email وفعّل الحساب.", "success");
-      return;
+    if (!result.ok) {
+      throw new Error(result.message || "تعذر تنفيذ العملية.");
     }
 
-    const { error } = await supabaseClient.auth.signInWithPassword({
-      email,
-      password,
-    });
-
-    if (error) throw error;
-
+    saveUser(result.user);
     window.location.href = "dashboard.html";
   } catch (error) {
     showMessage(error.message || "صار خطأ غير متوقع.", "error");
