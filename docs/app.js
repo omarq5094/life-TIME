@@ -96,6 +96,10 @@ const elements = {
   accountName: $("#accountName"),
   accountEmail: $("#accountEmail"),
   logoutButton: $("#logoutButton"),
+  resetAllButton: $("#resetAllButton"),
+  analysisScore: $("#analysisScore"),
+  analysisCards: $("#analysisCards"),
+  analysisTips: $("#analysisTips"),
 };
 
 function normalizeTime(value) {
@@ -208,8 +212,8 @@ function cloneTemplateItems(items) {
   }));
 }
 
-function loadState() {
-  const fallback = {
+function createDefaultState() {
+  return {
     day: cycleKey(new Date(), DEFAULT_COUNTDOWN_END_TIME),
     streak: 0,
     history: {},
@@ -218,6 +222,10 @@ function loadState() {
     templates: { ...DEFAULT_TEMPLATES },
     activities: DEFAULT_ACTIVITIES.map(createActivity),
   };
+}
+
+function loadState() {
+  const fallback = createDefaultState();
 
   try {
     const saved = JSON.parse(localStorage.getItem(STORAGE_KEY));
@@ -579,6 +587,24 @@ function resetDay() {
   render();
 }
 
+async function resetAllLocalData() {
+  if (!confirm("إعادة الضبط ستحذف ذاكرة هذا الجهاز وتعيد اليوم للوضع الافتراضي. هل تريد المتابعة؟")) return;
+
+  Object.keys(localStorage).forEach((key) => {
+    if (key === STORAGE_KEY || key.startsWith(`${STORAGE_KEY}:`)) {
+      localStorage.removeItem(key);
+    }
+  });
+
+  state = normalizeState(createDefaultState());
+  saveLocalState();
+  render();
+
+  if (currentUser) {
+    await saveStateToCloud();
+  }
+}
+
 function notifyOverBudget(activity) {
   if (activity.warned || currentUsed(activity) <= activity.budgetMs) return activity;
 
@@ -737,6 +763,106 @@ function renderTemplates() {
   }
 }
 
+function percentOf(value, total) {
+  return total > 0 ? Math.round((value / total) * 100) : 0;
+}
+
+function getUsedByCategory(category, now = Date.now()) {
+  return state.activities
+    .filter((activity) => activity.category === category)
+    .reduce((sum, activity) => sum + currentUsed(activity, now), 0);
+}
+
+function getStudyUsed(now = Date.now()) {
+  return state.activities
+    .filter((activity) => /مذاكرة|مراجعة|قراءة|دراسة|تعلم/.test(activity.name))
+    .reduce((sum, activity) => sum + currentUsed(activity, now), 0);
+}
+
+function makeAnalysisCard(title, value, note, tone = "neutral") {
+  const card = document.createElement("article");
+  card.className = `analysis-card ${tone}`;
+  card.innerHTML = `
+    <span class="metric-label">${title}</span>
+    <strong>${value}</strong>
+    <small>${note}</small>
+  `;
+  return card;
+}
+
+function renderDailyAnalysis(now = Date.now()) {
+  if (!elements.analysisCards || !elements.analysisTips || !elements.analysisScore) return;
+
+  const dashboard = buildDashboard(state.activities, now);
+  const tracked = dashboard.tracked;
+  const sleep = state.activities.find((activity) => activity.category === "sleep" || activity.isSleepBlock);
+  const sleepUsed = sleep ? currentUsed(sleep, now) : 0;
+  const sleepBudget = sleep ? sleep.budgetMs : 0;
+  const sleepRatio = sleepBudget ? sleepUsed / sleepBudget : 0;
+  const productiveUsed = getUsedByCategory("productive", now) + getUsedByCategory("health", now);
+  const consumptionUsed = getUsedByCategory("consumption", now);
+  const restUsed = getUsedByCategory("rest", now);
+  const socialUsed = getUsedByCategory("social", now);
+  const studyUsed = getStudyUsed(now);
+  const overBudgetCount = state.activities.filter((activity) => currentUsed(activity, now) > activity.budgetMs).length;
+  const planned = state.activities.reduce((sum, activity) => sum + activity.budgetMs, 0);
+  const plannedCoverage = percentOf(planned, DAY_MS);
+  const productivePercent = percentOf(productiveUsed, tracked);
+  const consumptionPercent = percentOf(consumptionUsed, tracked);
+
+  let score = 50;
+  if (sleepRatio >= 0.8 && sleepRatio <= 1.15) score += 15;
+  if (productivePercent >= 45) score += 20;
+  if (consumptionPercent <= 20) score += 10;
+  if (overBudgetCount === 0) score += 10;
+  if (plannedCoverage <= 100) score += 5;
+  if (tracked === 0) score = 0;
+  score = Math.max(0, Math.min(100, score));
+
+  elements.analysisScore.textContent = `${score}%`;
+  elements.analysisCards.innerHTML = "";
+
+  let sleepTone = "neutral";
+  let sleepNote = "لم يبدأ تتبع النوم بعد.";
+  if (sleepUsed > 0 && sleepRatio < 0.8) {
+    sleepTone = "warning";
+    sleepNote = "النوم أقل من المخطط. حاول تعويضه أو تقليل الضغط اليوم.";
+  } else if (sleepUsed > 0 && sleepRatio <= 1.15) {
+    sleepTone = "good";
+    sleepNote = "النوم قريب من الميزانية، وهذا ممتاز للاستدامة.";
+  } else if (sleepUsed > 0) {
+    sleepTone = "warning";
+    sleepNote = "النوم تجاوز الميزانية. راقب أثره على الإنتاجية.";
+  }
+
+  const studyTone = studyUsed > 0 ? "good" : "neutral";
+  const productivityTone = productivePercent >= 45 ? "good" : tracked ? "warning" : "neutral";
+  const consumptionTone = consumptionPercent > 25 ? "danger" : "good";
+
+  elements.analysisCards.append(
+    makeAnalysisCard("النوم", `${formatHours(sleepUsed)} / ${formatHours(sleepBudget)}`, sleepNote, sleepTone),
+    makeAnalysisCard("المذاكرة", formatHours(studyUsed), studyUsed > 0 ? "فيه تقدم واضح في وقت الدراسة." : "لم يتم تسجيل مذاكرة حتى الآن.", studyTone),
+    makeAnalysisCard("Productive", `${productivePercent}%`, productiveUsed > 0 ? `${formatHours(productiveUsed)} من الوقت المتتبع.` : "ابدأ نشاطًا منتجًا صغيرًا لتحريك اليوم.", productivityTone),
+    makeAnalysisCard("Consumption", `${consumptionPercent}%`, consumptionPercent > 25 ? "الاستهلاك مرتفع مقارنة بالوقت المتتبع." : "الاستهلاك تحت السيطرة حاليًا.", consumptionTone),
+    makeAnalysisCard("راحة / عائلة", formatHours(restUsed + socialUsed), "التوازن مهم، لكن لا تتركه يبتلع اليوم.", "neutral"),
+    makeAnalysisCard("Over Budget", String(overBudgetCount), overBudgetCount ? "فيه نشاط تجاوز الميزانية." : "لا يوجد تجاوز حتى الآن.", overBudgetCount ? "danger" : "good")
+  );
+
+  const tips = [];
+  if (tracked === 0) {
+    tips.push("ابدأ بتشغيل نشاط واحد فقط لمدة 10 دقائق حتى يبدأ التحليل يعطيك قراءة واقعية.");
+  } else {
+    if (sleepUsed === 0) tips.push("النوم لم يُسجل بعد؛ لو نومك أساسي في يومك شغّله حتى تكون القراءة أدق.");
+    if (sleepUsed > 0 && sleepRatio < 0.8) tips.push("النوم أقل من المخطط؛ لا تبني يوم إنتاجي قوي على طاقة منخفضة.");
+    if (productivePercent < 35) tips.push("نسبة Productive منخفضة؛ جرّب جلسة مذاكرة أو عمل قصيرة 25 دقيقة.");
+    if (consumptionPercent > 25) tips.push("وقت Consumption مرتفع؛ أوقف السوشال مؤقتًا وخذ قرار واضح للنشاط القادم.");
+    if (overBudgetCount > 0) tips.push("فيه نشاط متجاوز للميزانية؛ الأفضل توقفه أو تعدل خطتك بدل ما يكمل يسحب اليوم.");
+    if (tips.length === 0) tips.push("اليوم متوازن حتى الآن. حافظ على نفس الإيقاع ولا تفتح نشاطين ذهنيًا في نفس الوقت.");
+  }
+
+  elements.analysisTips.innerHTML = tips.map((tip) => `<li>${tip}</li>`).join("");
+}
+
 function render() {
   const now = Date.now();
   state = rolloverDay(state);
@@ -825,6 +951,7 @@ function render() {
   elements.topActivity.textContent = top && currentUsed(top, now) > 0 ? top.name : "-";
   elements.weeklyTotal.textContent = formatHours(getWeekTotal());
   renderTemplates();
+  renderDailyAnalysis(now);
   saveLocalState();
 }
 
@@ -990,5 +1117,6 @@ elements.saveTemplateButton.addEventListener("click", saveCurrentTemplate);
 elements.applyTemplateButton.addEventListener("click", applySelectedTemplate);
 elements.deleteTemplateButton.addEventListener("click", deleteSelectedTemplate);
 elements.logoutButton.addEventListener("click", logout);
+elements.resetAllButton.addEventListener("click", resetAllLocalData);
 
 initApp();

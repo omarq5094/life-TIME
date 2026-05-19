@@ -15,7 +15,10 @@
           <strong id="accountName">جار التحميل...</strong>
           <small id="accountEmail">-</small>
         </div>
-        <button id="logoutButton" class="secondary-button">Logout</button>
+        <div class="account-actions">
+          <button id="resetAllButton" class="secondary-button danger-button">إعادة ضبط</button>
+          <button id="logoutButton" class="secondary-button">Logout</button>
+        </div>
       </section>
 
       <section class="top-panel" aria-label="ملخص اليوم">
@@ -175,6 +178,23 @@
           <span class="metric-label">الأسبوع</span>
           <strong id="weeklyTotal">0h</strong>
           <small>وقت تم تتبعه</small>
+        </div>
+      </section>
+
+      <section class="analysis-panel" aria-label="تحليل اليوم">
+        <div class="analysis-heading">
+          <div>
+            <p class="eyebrow">Daily Analysis</p>
+            <h2>تحليل اليوم</h2>
+          </div>
+          <span id="analysisScore">0%</span>
+        </div>
+
+        <div class="analysis-grid" id="analysisCards"></div>
+
+        <div class="analysis-summary">
+          <h2>قراءة سريعة</h2>
+          <ul id="analysisTips"></ul>
         </div>
       </section>
     </main>
