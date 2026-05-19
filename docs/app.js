@@ -55,10 +55,7 @@ const $ = (selector) => document.querySelector(selector);
 
 let currentUser = null;
 let saveTimer = null;
-let cloudSaveInterval = null;
-let cloudRefreshInterval = null;
 let isLoadingCloudState = false;
-let isApplyingSessions = false;
 
 let state = loadState();
 
@@ -252,50 +249,8 @@ function normalizeState(saved) {
   return syncSleepBlock(normalized, false);
 }
 
-function getLocalStorageKey() {
-  return currentUser ? `${STORAGE_KEY}:${currentUser.id}` : STORAGE_KEY;
-}
-
 function saveLocalState() {
-  localStorage.setItem(getLocalStorageKey(), JSON.stringify(state));
-}
-
-function loadLocalStateForCurrentUser() {
-  if (!currentUser) return null;
-
-  try {
-    const savedForUser = JSON.parse(localStorage.getItem(getLocalStorageKey()));
-    if (savedForUser) return rolloverDay(normalizeState(savedForUser));
-
-    const legacySaved = JSON.parse(localStorage.getItem(STORAGE_KEY));
-    return legacySaved ? rolloverDay(normalizeState(legacySaved)) : null;
-  } catch {
-    return null;
-  }
-}
-
-function createCloudSnapshot() {
-  const now = Date.now();
-  const snapshot = JSON.parse(JSON.stringify(state));
-
-  snapshot.activities = snapshot.activities.map((activity) => {
-    if (!activity.runningSince) return activity;
-
-    return {
-      ...activity,
-      usedMs: currentUsed(activity, now),
-      runningSince: now,
-    };
-  });
-
-  return snapshot;
-}
-
-function applyCloudState(nextState) {
-  isLoadingCloudState = true;
-  state = rolloverDay(normalizeState(nextState));
-  saveLocalState();
-  isLoadingCloudState = false;
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
 }
 
 function saveState() {
@@ -308,17 +263,16 @@ function saveState() {
 
 function scheduleCloudSave() {
   clearTimeout(saveTimer);
-  saveTimer = setTimeout(saveStateToCloud, 1200);
+  saveTimer = setTimeout(saveStateToCloud, 550);
 }
 
 async function saveStateToCloud() {
   if (!currentUser) return;
 
-  const snapshot = createCloudSnapshot();
   const payload = {
     user_id: currentUser.id,
-    day_key: snapshot.day,
-    data: snapshot,
+    day_key: state.day,
+    data: state,
     updated_at: new Date().toISOString(),
   };
 
@@ -332,155 +286,27 @@ async function saveStateToCloud() {
 }
 
 async function loadStateFromCloud() {
-  if (!currentUser) return false;
+  if (!currentUser) return;
 
   const currentDay = cycleKey(new Date(), state.countdownEndTime || DEFAULT_COUNTDOWN_END_TIME);
 
   const { data, error } = await supabaseClient
     .from("user_day_state")
-    .select("data, updated_at")
+    .select("data")
     .eq("user_id", currentUser.id)
     .eq("day_key", currentDay)
     .maybeSingle();
 
   if (error) {
     console.error("Cloud load failed:", error.message);
-    return false;
-  }
-
-  if (data?.data) {
-    applyCloudState(data.data);
-    return true;
-  }
-
-  const localUserState = loadLocalStateForCurrentUser();
-  if (localUserState) {
-    applyCloudState(localUserState);
-    await saveStateToCloud();
-  }
-
-  return false;
-}
-
-async function refreshStateFromCloud() {
-  if (!currentUser || isLoadingCloudState) return;
-
-  const loaded = await loadStateFromCloud();
-  await loadSessionsFromCloud();
-  if (loaded) render();
-}
-
-function getActivitySessionKey(activity) {
-  return activity.id || activity.name;
-}
-
-function findActivityBySession(session) {
-  return state.activities.find((activity) => getActivitySessionKey(activity) === session.activity_id)
-    || state.activities.find((activity) => activity.name === session.activity_name);
-}
-
-function resetRuntimeUsage() {
-  state.activities = state.activities.map((activity) => ({
-    ...activity,
-    usedMs: 0,
-    runningSince: null,
-  }));
-}
-
-async function loadSessionsFromCloud() {
-  if (!currentUser || isApplyingSessions) return;
-
-  isApplyingSessions = true;
-  const dayKey = cycleKey(new Date(), state.countdownEndTime || DEFAULT_COUNTDOWN_END_TIME);
-
-  const { data, error } = await supabaseClient
-    .from("activity_sessions")
-    .select("id, activity_id, activity_name, day_key, started_at, ended_at, duration_ms")
-    .eq("user_id", currentUser.id)
-    .eq("day_key", dayKey)
-    .order("started_at", { ascending: true });
-
-  if (error) {
-    console.error("Sessions load failed:", error.message);
-    isApplyingSessions = false;
     return;
   }
 
-  resetRuntimeUsage();
-
-  (data || []).forEach((session) => {
-    const activity = findActivityBySession(session);
-    if (!activity) return;
-
-    if (session.ended_at) {
-      activity.usedMs += Number(session.duration_ms || 0);
-      return;
-    }
-
-    activity.runningSince = new Date(session.started_at).getTime();
-  });
-
-  saveLocalState();
-  isApplyingSessions = false;
-}
-
-async function getOpenSession() {
-  if (!currentUser) return null;
-
-  const dayKey = cycleKey(new Date(), state.countdownEndTime || DEFAULT_COUNTDOWN_END_TIME);
-  const { data, error } = await supabaseClient
-    .from("activity_sessions")
-    .select("id, activity_id, activity_name, started_at")
-    .eq("user_id", currentUser.id)
-    .eq("day_key", dayKey)
-    .is("ended_at", null)
-    .maybeSingle();
-
-  if (error) {
-    console.error("Open session load failed:", error.message);
-    return null;
-  }
-
-  return data || null;
-}
-
-async function closeOpenSession() {
-  const openSession = await getOpenSession();
-  if (!openSession) return;
-
-  const endedAt = new Date();
-  const durationMs = Math.max(0, endedAt.getTime() - new Date(openSession.started_at).getTime());
-
-  const { error } = await supabaseClient
-    .from("activity_sessions")
-    .update({
-      ended_at: endedAt.toISOString(),
-      duration_ms: durationMs,
-    })
-    .eq("id", openSession.id)
-    .eq("user_id", currentUser.id);
-
-  if (error) {
-    console.error("Session close failed:", error.message);
-  }
-}
-
-async function openSessionForActivity(activity) {
-  if (!currentUser || !activity) return;
-
-  const dayKey = cycleKey(new Date(), state.countdownEndTime || DEFAULT_COUNTDOWN_END_TIME);
-  const { error } = await supabaseClient
-    .from("activity_sessions")
-    .insert({
-      user_id: currentUser.id,
-      activity_id: getActivitySessionKey(activity),
-      activity_name: activity.name,
-      day_key: dayKey,
-    });
-
-  if (error) {
-    console.error("Session start failed:", error.message);
-    alert("تعذر تشغيل النشاط. حدّث الصفحة وحاول مرة أخرى.");
+  if (data?.data) {
+    isLoadingCloudState = true;
+    state = rolloverDay(normalizeState(data.data));
+    saveLocalState();
+    isLoadingCloudState = false;
   }
 }
 
@@ -545,38 +371,50 @@ function formatHours(ms) {
   return `${Number(hours.toFixed(hours % 1 === 0 ? 0 : 1))}h`;
 }
 
-async function pauseAll() {
-  await closeOpenSession();
-  await loadSessionsFromCloud();
+function pauseAll() {
+  const now = Date.now();
+  state.activities = state.activities.map((activity) => {
+    if (!activity.runningSince) return activity;
+    return {
+      ...activity,
+      usedMs: activity.usedMs + (now - activity.runningSince),
+      runningSince: null,
+    };
+  });
   saveState();
   render();
 }
 
-async function startActivity(id) {
-  const target = state.activities.find((activity) => activity.id === id);
-  if (!target) return;
+function startActivity(id) {
+  const now = Date.now();
+  state.activities = state.activities.map((activity) => {
+    if (activity.id === id) {
+      return {
+        ...activity,
+        runningSince: activity.runningSince ? null : now,
+      };
+    }
 
-  const openSession = await getOpenSession();
+    if (!activity.runningSince) return activity;
+    return {
+      ...activity,
+      usedMs: activity.usedMs + (now - activity.runningSince),
+      runningSince: null,
+    };
+  });
 
-  await closeOpenSession();
-
-  if (!openSession || openSession.activity_id !== getActivitySessionKey(target)) {
-    await openSessionForActivity(target);
-  }
-
-  await loadSessionsFromCloud();
   saveState();
   render();
 }
 
-async function deleteActivity(id) {
+function deleteActivity(id) {
   const activity = state.activities.find((item) => item.id === id);
   if (activity?.isSleepBlock) {
     alert("Sleep Block ثابت. عطّله من إعدادات النوم بدل الحذف.");
     return;
   }
 
-  await pauseAll();
+  pauseAll();
   state.activities = state.activities.filter((item) => item.id !== id);
   saveState();
   render();
@@ -819,11 +657,11 @@ function render() {
     const deleteButton = card.querySelector(".delete-button");
     deleteButton.disabled = Boolean(activity.isSleepBlock);
     deleteButton.title = activity.isSleepBlock ? "Sleep Block ثابت" : "حذف النشاط";
-    deleteButton.addEventListener("click", async () => deleteActivity(activity.id));
+    deleteButton.addEventListener("click", () => deleteActivity(activity.id));
 
-    card.querySelector(".start-button").addEventListener("click", async () => {
+    card.querySelector(".start-button").addEventListener("click", () => {
       requestNotificationPermission();
-      await startActivity(activity.id);
+      startActivity(activity.id);
     });
 
     elements.activityList.appendChild(card);
@@ -931,7 +769,6 @@ async function guardDashboard() {
   currentUser = data.session.user;
   await loadProfile();
   await loadStateFromCloud();
-  await loadSessionsFromCloud();
   return true;
 }
 
@@ -948,23 +785,6 @@ async function initApp() {
 
   render();
   setInterval(render, 1000);
-
-  cloudSaveInterval = setInterval(saveStateToCloud, 10000);
-  cloudRefreshInterval = setInterval(refreshStateFromCloud, 10000);
-
-  window.addEventListener("beforeunload", () => {
-    saveStateToCloud();
-  });
-
-  document.addEventListener("visibilitychange", () => {
-    if (document.hidden) {
-      saveStateToCloud();
-    } else {
-      refreshStateFromCloud();
-    }
-  });
-
-  window.addEventListener("focus", refreshStateFromCloud);
 }
 
 elements.form.addEventListener("submit", (event) => {
