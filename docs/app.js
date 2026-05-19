@@ -55,6 +55,8 @@ const $ = (selector) => document.querySelector(selector);
 
 let currentUser = null;
 let saveTimer = null;
+let cloudSaveInterval = null;
+let cloudRefreshInterval = null;
 let isLoadingCloudState = false;
 
 let state = loadState();
@@ -249,8 +251,50 @@ function normalizeState(saved) {
   return syncSleepBlock(normalized, false);
 }
 
+function getLocalStorageKey() {
+  return currentUser ? `${STORAGE_KEY}:${currentUser.id}` : STORAGE_KEY;
+}
+
 function saveLocalState() {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  localStorage.setItem(getLocalStorageKey(), JSON.stringify(state));
+}
+
+function loadLocalStateForCurrentUser() {
+  if (!currentUser) return null;
+
+  try {
+    const savedForUser = JSON.parse(localStorage.getItem(getLocalStorageKey()));
+    if (savedForUser) return rolloverDay(normalizeState(savedForUser));
+
+    const legacySaved = JSON.parse(localStorage.getItem(STORAGE_KEY));
+    return legacySaved ? rolloverDay(normalizeState(legacySaved)) : null;
+  } catch {
+    return null;
+  }
+}
+
+function createCloudSnapshot() {
+  const now = Date.now();
+  const snapshot = JSON.parse(JSON.stringify(state));
+
+  snapshot.activities = snapshot.activities.map((activity) => {
+    if (!activity.runningSince) return activity;
+
+    return {
+      ...activity,
+      usedMs: currentUsed(activity, now),
+      runningSince: now,
+    };
+  });
+
+  return snapshot;
+}
+
+function applyCloudState(nextState) {
+  isLoadingCloudState = true;
+  state = rolloverDay(normalizeState(nextState));
+  saveLocalState();
+  isLoadingCloudState = false;
 }
 
 function saveState() {
@@ -263,16 +307,17 @@ function saveState() {
 
 function scheduleCloudSave() {
   clearTimeout(saveTimer);
-  saveTimer = setTimeout(saveStateToCloud, 550);
+  saveTimer = setTimeout(saveStateToCloud, 1200);
 }
 
 async function saveStateToCloud() {
   if (!currentUser) return;
 
+  const snapshot = createCloudSnapshot();
   const payload = {
     user_id: currentUser.id,
-    day_key: state.day,
-    data: state,
+    day_key: snapshot.day,
+    data: snapshot,
     updated_at: new Date().toISOString(),
   };
 
@@ -286,28 +331,47 @@ async function saveStateToCloud() {
 }
 
 async function loadStateFromCloud() {
-  if (!currentUser) return;
+  if (!currentUser) return false;
 
   const currentDay = cycleKey(new Date(), state.countdownEndTime || DEFAULT_COUNTDOWN_END_TIME);
 
   const { data, error } = await supabaseClient
     .from("user_day_state")
-    .select("data")
+    .select("data, updated_at")
     .eq("user_id", currentUser.id)
     .eq("day_key", currentDay)
     .maybeSingle();
 
   if (error) {
     console.error("Cloud load failed:", error.message);
-    return;
+    return false;
   }
 
   if (data?.data) {
-    isLoadingCloudState = true;
-    state = rolloverDay(normalizeState(data.data));
-    saveLocalState();
-    isLoadingCloudState = false;
+    applyCloudState(data.data);
+    return true;
   }
+
+  const localUserState = loadLocalStateForCurrentUser();
+  if (localUserState) {
+    applyCloudState(localUserState);
+    await saveStateToCloud();
+  }
+
+  return false;
+}
+
+async function refreshStateFromCloud() {
+  if (!currentUser || isLoadingCloudState) return;
+
+  const activeLocalActivity = state.activities?.some((activity) => activity.runningSince);
+  if (activeLocalActivity) {
+    await saveStateToCloud();
+    return;
+  }
+
+  const loaded = await loadStateFromCloud();
+  if (loaded) render();
 }
 
 function rolloverDay(saved) {
@@ -785,6 +849,23 @@ async function initApp() {
 
   render();
   setInterval(render, 1000);
+
+  cloudSaveInterval = setInterval(saveStateToCloud, 10000);
+  cloudRefreshInterval = setInterval(refreshStateFromCloud, 30000);
+
+  window.addEventListener("beforeunload", () => {
+    saveStateToCloud();
+  });
+
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) {
+      saveStateToCloud();
+    } else {
+      refreshStateFromCloud();
+    }
+  });
+
+  window.addEventListener("focus", refreshStateFromCloud);
 }
 
 elements.form.addEventListener("submit", (event) => {
