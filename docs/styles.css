@@ -1,1 +1,599 @@
+:root {
+  color-scheme: dark;
+  --bg: #06080d;
+  --panel: #10141d;
+  --panel-soft: #151b27;
+  --line: rgba(255, 255, 255, 0.1);
+  --text: #f5f7fb;
+  --muted: #9aa4b2;
+  --accent: #39d98a;
+  --accent-2: #5eb1ff;
+  --danger: #ff5c7a;
+  --warning: #ffcc66;
+  --radius: 8px;
+  font-family: Tahoma, Arial, sans-serif;
+}
 
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background:
+    radial-gradient(circle at top left, rgba(94, 177, 255, 0.16), transparent 28rem),
+    linear-gradient(135deg, #05070b 0%, #0c1119 46%, #080b11 100%);
+  color: var(--text);
+}
+
+button,
+input,
+select {
+  font: inherit;
+}
+
+button {
+  border: 0;
+  cursor: pointer;
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.app-shell {
+  width: min(1180px, calc(100% - 32px));
+  margin: 0 auto;
+  padding: 28px 0 40px;
+}
+
+.top-panel,
+.control-panel,
+.activities-area,
+.insights > div,
+.smart-dashboard {
+  border: 1px solid var(--line);
+  background: rgba(16, 20, 29, 0.84);
+  backdrop-filter: blur(16px);
+  border-radius: var(--radius);
+}
+
+.top-panel {
+  display: grid;
+  grid-template-columns: 1fr minmax(280px, 430px) 1fr;
+  gap: 22px;
+  align-items: center;
+  padding: 24px;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.status-dot {
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  background: var(--muted);
+  box-shadow: 0 0 0 8px rgba(154, 164, 178, 0.08);
+}
+
+.status-dot.active {
+  background: var(--accent);
+  box-shadow: 0 0 0 8px rgba(57, 217, 138, 0.1), 0 0 24px rgba(57, 217, 138, 0.65);
+}
+
+.eyebrow,
+.label,
+.metric-label {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0;
+}
+
+h1,
+h2,
+h3,
+p {
+  margin-top: 0;
+}
+
+h1 {
+  margin-bottom: 0;
+  font-size: clamp(1.6rem, 4vw, 3.2rem);
+}
+
+h2 {
+  margin-bottom: 0;
+  font-size: 1.2rem;
+}
+
+.day-countdown {
+  text-align: center;
+}
+
+.day-countdown strong {
+  display: block;
+  margin: 6px 0 12px;
+  font-size: clamp(2.8rem, 7vw, 5.6rem);
+  font-weight: 800;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.day-progress {
+  height: 8px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.day-progress span {
+  display: block;
+  width: 0;
+  height: 100%;
+  background: linear-gradient(90deg, var(--accent), var(--accent-2));
+}
+
+.live-activity {
+  justify-self: end;
+  color: var(--muted);
+  line-height: 1.8;
+  text-align: left;
+}
+
+.dashboard-grid {
+  display: grid;
+  grid-template-columns: 320px 1fr;
+  gap: 18px;
+  margin-top: 18px;
+}
+
+.control-panel,
+.activities-area {
+  padding: 20px;
+}
+
+.panel-heading,
+.toolbar,
+.card-head,
+.card-actions,
+.allocation-summary,
+.insights,
+.dashboard-heading,
+.template-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.icon-button,
+.delete-button {
+  width: 38px;
+  height: 38px;
+  border-radius: var(--radius);
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.07);
+}
+
+.activity-form,
+.template-panel,
+.sleep-panel,
+.countdown-settings {
+  display: grid;
+  gap: 12px;
+  margin: 18px 0;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: rgba(255, 255, 255, 0.035);
+}
+
+label {
+  display: grid;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 0.86rem;
+}
+
+.switch-row {
+  display: flex;
+  align-items: center;
+  grid-template-columns: auto auto;
+}
+
+input,
+select {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 12px 13px;
+  color: var(--text);
+  background: #090d14;
+  outline: 0;
+}
+
+input:focus,
+select:focus {
+  border-color: rgba(94, 177, 255, 0.7);
+}
+
+.activity-form button,
+.start-button,
+.secondary-button,
+.time-form button,
+.quick-times button {
+  min-height: 42px;
+  border-radius: var(--radius);
+  color: #04100a;
+  background: var(--accent);
+  font-weight: 700;
+  padding: 0 14px;
+}
+
+.secondary-button {
+  min-width: 92px;
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.danger-button {
+  color: #fff;
+  background: rgba(255, 92, 122, 0.22);
+}
+
+.template-actions {
+  align-items: stretch;
+}
+
+.sleep-grid,
+.time-form {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.time-form {
+  grid-template-columns: 1fr auto;
+  align-items: end;
+}
+
+.countdown-settings p,
+.sleep-panel p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.7;
+  font-size: 0.88rem;
+}
+
+.quick-times {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.quick-times button {
+  min-height: 36px;
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.08);
+  font-size: 0.86rem;
+}
+
+.quick-times button.active {
+  color: #04100a;
+  background: var(--accent);
+}
+
+.allocation-summary {
+  padding: 14px;
+  border-radius: var(--radius);
+  background: var(--panel-soft);
+}
+
+.allocation-summary div {
+  display: grid;
+  gap: 4px;
+}
+
+.allocation-summary span,
+.report-box p,
+.budget,
+.state-label,
+small {
+  color: var(--muted);
+}
+
+.report-box {
+  margin-top: 16px;
+  padding-top: 18px;
+  border-top: 1px solid var(--line);
+}
+
+.report-box p {
+  margin-bottom: 0;
+  line-height: 1.8;
+}
+
+.activity-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 14px;
+  margin-top: 18px;
+}
+
+.activity-card {
+  position: relative;
+  min-height: 316px;
+  padding: 18px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.055), rgba(255, 255, 255, 0.025));
+}
+
+.activity-card.active {
+  border-color: rgba(57, 217, 138, 0.8);
+  box-shadow: inset 0 0 0 1px rgba(57, 217, 138, 0.18), 0 18px 42px rgba(0, 0, 0, 0.28);
+}
+
+.activity-card.over {
+  border-color: rgba(255, 92, 122, 0.75);
+}
+
+.activity-card.sleep-card {
+  background:
+    radial-gradient(circle at top right, rgba(94, 177, 255, 0.14), transparent 12rem),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.055), rgba(255, 255, 255, 0.025));
+}
+
+.card-head h3 {
+  margin-bottom: 4px;
+  font-size: 1.08rem;
+}
+
+.delete-button {
+  color: var(--muted);
+  font-size: 1.3rem;
+}
+
+.category-badge {
+  display: inline-flex;
+  width: fit-content;
+  margin-top: 12px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  color: var(--text);
+  background: rgba(94, 177, 255, 0.14);
+  font-size: 0.76rem;
+  font-weight: 700;
+}
+
+.time-left {
+  margin: 16px 0 12px;
+  font-size: 2.3rem;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  direction: ltr;
+  text-align: right;
+}
+
+.progress-ring {
+  position: relative;
+  width: 132px;
+  height: 132px;
+  margin: 0 auto 18px;
+}
+
+.progress-ring svg {
+  width: 100%;
+  height: 100%;
+  transform: rotate(-90deg);
+}
+
+.progress-ring circle {
+  fill: none;
+  stroke-width: 10;
+}
+
+.track {
+  stroke: rgba(255, 255, 255, 0.09);
+}
+
+.fill {
+  stroke: var(--accent-2);
+  stroke-linecap: round;
+  stroke-dasharray: 327;
+  stroke-dashoffset: 327;
+  transition: stroke-dashoffset 0.35s ease;
+}
+
+.activity-card.active .fill {
+  stroke: var(--accent);
+}
+
+.activity-card.over .fill {
+  stroke: var(--danger);
+}
+
+.percent {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font-size: 1.25rem;
+  font-weight: 800;
+}
+
+.start-button {
+  min-width: 96px;
+  padding: 0 16px;
+}
+
+.activity-card.active .start-button {
+  color: #15080b;
+  background: var(--warning);
+}
+
+.activity-card.over .start-button {
+  color: #fff;
+  background: var(--danger);
+}
+
+.insights,
+.smart-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  margin-top: 18px;
+  gap: 14px;
+}
+
+.insights > div,
+.smart-grid > div {
+  display: grid;
+  gap: 4px;
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: rgba(16, 20, 29, 0.84);
+}
+
+.insights strong,
+.smart-grid strong {
+  font-size: 1.55rem;
+}
+
+.smart-dashboard {
+  margin-top: 18px;
+  padding: 20px;
+}
+
+.dashboard-heading span {
+  padding: 8px 12px;
+  border-radius: 999px;
+  color: #04100a;
+  background: var(--accent);
+  font-weight: 800;
+  font-size: 0.82rem;
+}
+
+.smart-grid {
+  grid-template-columns: repeat(4, 1fr);
+}
+
+.category-dashboard {
+  display: grid;
+  grid-template-columns: 1.4fr 1fr;
+  gap: 18px;
+  margin-top: 18px;
+}
+
+.category-list,
+.recommendation-box {
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.category-row {
+  display: grid;
+  grid-template-columns: 130px 1fr 44px;
+  gap: 12px;
+  align-items: center;
+  margin: 12px 0;
+}
+
+.category-row strong,
+.category-row small {
+  display: block;
+}
+
+.category-bar {
+  height: 8px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.category-bar span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--accent), var(--accent-2));
+}
+
+.recommendation-box p {
+  margin-bottom: 0;
+  color: var(--muted);
+  line-height: 1.9;
+}
+
+@media (max-width: 980px) {
+  .smart-grid,
+  .category-dashboard {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (max-width: 860px) {
+  .top-panel,
+  .dashboard-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .live-activity {
+    justify-self: stretch;
+    text-align: right;
+  }
+
+  .insights,
+  .smart-grid,
+  .category-dashboard {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 520px) {
+  .app-shell {
+    width: min(100% - 20px, 1180px);
+    padding-top: 10px;
+  }
+
+  .top-panel,
+  .control-panel,
+  .activities-area,
+  .smart-dashboard {
+    padding: 16px;
+  }
+
+  .toolbar,
+  .template-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .secondary-button {
+    width: 100%;
+  }
+
+  .time-left {
+    font-size: 2rem;
+  }
+
+  .time-form,
+  .sleep-grid,
+  .category-row {
+    grid-template-columns: 1fr;
+  }
+
+  .time-form button {
+    width: 100%;
+  }
+}
