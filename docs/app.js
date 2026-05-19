@@ -77,7 +77,7 @@ function saveCurrentUser(user) {
   }
 }
 
-let state = loadState();
+let state = normalizeState(createDefaultState());
 
 const elements = {
   dayCountdown: $("#dayCountdown"),
@@ -278,11 +278,17 @@ function normalizeState(saved) {
 }
 
 function getLocalStorageKey() {
-  return currentUser ? `${STORAGE_KEY}:${currentUser.id}` : STORAGE_KEY;
+  const userKey = currentUser?.email || currentUser?.id || currentUser?.user_id || "guest";
+  return `${STORAGE_KEY}:time:${String(userKey).toLowerCase()}`;
 }
 
 function saveLocalState() {
-  localStorage.setItem(getLocalStorageKey(), JSON.stringify(state));
+  if (!currentUser) return;
+  try {
+    localStorage.setItem(getLocalStorageKey(), JSON.stringify(state));
+  } catch (error) {
+    console.error("Local save failed:", error);
+  }
 }
 
 function loadLocalStateForCurrentUser() {
@@ -290,11 +296,9 @@ function loadLocalStateForCurrentUser() {
 
   try {
     const savedForUser = JSON.parse(localStorage.getItem(getLocalStorageKey()));
-    if (savedForUser) return rolloverDay(normalizeState(savedForUser));
-
-    const legacySaved = JSON.parse(localStorage.getItem(STORAGE_KEY));
-    return legacySaved ? rolloverDay(normalizeState(legacySaved)) : null;
-  } catch {
+    return savedForUser ? rolloverDay(normalizeState(savedForUser)) : null;
+  } catch (error) {
+    console.error("Local load failed:", error);
     return null;
   }
 }
@@ -421,9 +425,17 @@ function startActivity(id) {
 
   state.activities = state.activities.map((activity) => {
     if (activity.id === id) {
+      if (activity.runningSince) {
+        return {
+          ...activity,
+          usedMs: activity.usedMs + (now - activity.runningSince),
+          runningSince: null,
+        };
+      }
+
       return {
         ...activity,
-        runningSince: activity.runningSince ? null : now,
+        runningSince: now,
       };
     }
 
