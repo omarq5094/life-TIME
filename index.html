@@ -51,6 +51,27 @@
             <button type="submit">إضافة</button>
           </form>
 
+          <div class="countdown-settings">
+            <div>
+              <h2>نهاية العداد</h2>
+              <p id="resetCycleInfo">ينتهي العداد عند 12:00 صباحًا.</p>
+            </div>
+
+            <form id="countdownEndTimeForm" class="time-form">
+              <label>
+                وقت النهاية
+                <input id="countdownEndTime" type="time" value="00:00" required />
+              </label>
+              <button type="submit">تطبيق</button>
+            </form>
+
+            <div class="quick-times" aria-label="اختصارات وقت نهاية العداد">
+              <button type="button" data-end-time="00:00">12:00 ص</button>
+              <button type="button" data-end-time="08:00">8:00 ص</button>
+              <button type="button" data-end-time="06:00">6:00 ص</button>
+            </div>
+          </div>
+
           <div class="allocation-summary">
             <div>
               <span>المخصص</span>
