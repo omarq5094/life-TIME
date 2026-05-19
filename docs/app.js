@@ -1,3 +1,56 @@
+const USER_KEY = "life-countdown-user";
+const STORAGE_KEY = "life-countdown-os-v3";
+const DAY_MS = 24 * 60 * 60 * 1000;
+const DEFAULT_COUNTDOWN_END_TIME = "00:00";
+
+const CATEGORY_META = {
+  productive: { label: "Productive" },
+  health: { label: "Health" },
+  rest: { label: "Rest" },
+  social: { label: "Social" },
+  consumption: { label: "Consumption" },
+  sleep: { label: "Sleep" },
+};
+
+const DEFAULT_ACTIVITIES = [
+  { name: "النوم", hours: 7.5, category: "sleep", isSleepBlock: true },
+  { name: "المذاكرة", hours: 4, category: "productive" },
+  { name: "العمل", hours: 6, category: "productive" },
+  { name: "السوشال", hours: 1.5, category: "consumption" },
+  { name: "النادي", hours: 1, category: "health" },
+  { name: "العائلة", hours: 2, category: "social" },
+  { name: "الترفيه", hours: 2, category: "rest" },
+];
+
+const DEFAULT_TEMPLATES = {
+  "يوم دوام": [
+    { name: "النوم", hours: 7.5, category: "sleep", isSleepBlock: true },
+    { name: "العمل", hours: 8, category: "productive" },
+    { name: "المذاكرة", hours: 2, category: "productive" },
+    { name: "النادي", hours: 1, category: "health" },
+    { name: "العائلة", hours: 2, category: "social" },
+    { name: "راحة", hours: 2, category: "rest" },
+  ],
+  "يوم مذاكرة": [
+    { name: "النوم", hours: 8, category: "sleep", isSleepBlock: true },
+    { name: "مذاكرة عميقة", hours: 5, category: "productive" },
+    { name: "مراجعة", hours: 2, category: "productive" },
+    { name: "نادي", hours: 1, category: "health" },
+    { name: "راحة", hours: 2, category: "rest" },
+    { name: "سوشال", hours: 1, category: "consumption" },
+  ],
+  "يوم إجازة": [
+    { name: "النوم", hours: 8, category: "sleep", isSleepBlock: true },
+    { name: "العائلة", hours: 4, category: "social" },
+    { name: "ترفيه", hours: 3, category: "rest" },
+    { name: "نادي", hours: 1, category: "health" },
+    { name: "قراءة", hours: 1.5, category: "productive" },
+  ],
+};
+
+const $ = (selector) => document.querySelector(selector);
+let currentUser = null;
+
 function normalizeUser(rawUser) {
   if (!rawUser) return null;
 
@@ -246,29 +299,6 @@ function loadLocalStateForCurrentUser() {
   }
 }
 
-function createCloudSnapshot() {
-  const now = Date.now();
-  const snapshot = JSON.parse(JSON.stringify(state));
-
-  snapshot.activities = snapshot.activities.map((activity) => {
-    if (!activity.runningSince) return activity;
-
-    return {
-      ...activity,
-      usedMs: currentUsed(activity, now),
-      runningSince: now,
-    };
-  });
-
-  return snapshot;
-}
-
-function applyCloudState(nextState) {
-  isLoadingCloudState = true;
-  state = rolloverDay(normalizeState(nextState));
-  saveLocalState();
-  isLoadingCloudState = false;
-}
 
 function saveState() {
   saveLocalState();
