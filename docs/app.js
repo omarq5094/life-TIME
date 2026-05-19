@@ -1,3 +1,7 @@
+const SUPABASE_URL = "https://ajqwioyahkmmvhmfetus.supabase.co";
+const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_73l7upx07nFZ3dVu-s9KAQ_7wm7GNWa";
+const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
+
 const STORAGE_KEY = "life-countdown-os-v3";
 const DAY_MS = 24 * 60 * 60 * 1000;
 const DEFAULT_COUNTDOWN_END_TIME = "00:00";
@@ -49,6 +53,10 @@ const DEFAULT_TEMPLATES = {
 
 const $ = (selector) => document.querySelector(selector);
 
+let currentUser = null;
+let saveTimer = null;
+let isLoadingCloudState = false;
+
 let state = loadState();
 
 const elements = {
@@ -82,13 +90,9 @@ const elements = {
   applyTemplateButton: $("#applyTemplateButton"),
   saveTemplateButton: $("#saveTemplateButton"),
   deleteTemplateButton: $("#deleteTemplateButton"),
-  adherenceValue: $("#adherenceValue"),
-  productiveValue: $("#productiveValue"),
-  overBudgetValue: $("#overBudgetValue"),
-  unusedValue: $("#unusedValue"),
-  categoryBreakdown: $("#categoryBreakdown"),
-  smartRecommendation: $("#smartRecommendation"),
-  dashboardStatus: $("#dashboardStatus"),
+  accountName: $("#accountName"),
+  accountEmail: $("#accountEmail"),
+  logoutButton: $("#logoutButton"),
 };
 
 function normalizeTime(value) {
@@ -245,8 +249,65 @@ function normalizeState(saved) {
   return syncSleepBlock(normalized, false);
 }
 
-function saveState() {
+function saveLocalState() {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+}
+
+function saveState() {
+  saveLocalState();
+
+  if (!isLoadingCloudState && currentUser) {
+    scheduleCloudSave();
+  }
+}
+
+function scheduleCloudSave() {
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(saveStateToCloud, 550);
+}
+
+async function saveStateToCloud() {
+  if (!currentUser) return;
+
+  const payload = {
+    user_id: currentUser.id,
+    day_key: state.day,
+    data: state,
+    updated_at: new Date().toISOString(),
+  };
+
+  const { error } = await supabaseClient
+    .from("user_day_state")
+    .upsert(payload, { onConflict: "user_id,day_key" });
+
+  if (error) {
+    console.error("Cloud save failed:", error.message);
+  }
+}
+
+async function loadStateFromCloud() {
+  if (!currentUser) return;
+
+  const currentDay = cycleKey(new Date(), state.countdownEndTime || DEFAULT_COUNTDOWN_END_TIME);
+
+  const { data, error } = await supabaseClient
+    .from("user_day_state")
+    .select("data")
+    .eq("user_id", currentUser.id)
+    .eq("day_key", currentDay)
+    .maybeSingle();
+
+  if (error) {
+    console.error("Cloud load failed:", error.message);
+    return;
+  }
+
+  if (data?.data) {
+    isLoadingCloudState = true;
+    state = rolloverDay(normalizeState(data.data));
+    saveLocalState();
+    isLoadingCloudState = false;
+  }
 }
 
 function rolloverDay(saved) {
@@ -505,26 +566,6 @@ function buildDashboard(activities, now = Date.now()) {
   };
 }
 
-function smartRecommendation(dashboard) {
-  if (dashboard.tracked === 0) return "ابدأ تتبع نشاط واحد حتى تظهر قراءة ذكية.";
-
-  const highestCategory = [...dashboard.categoryTotals].sort((a, b) => b.used - a.used)[0];
-
-  if (dashboard.overBudgetCount > 0) {
-    return `عندك ${dashboard.overBudgetCount} نشاط متجاوز. أفضل قرار الآن: Pause للنشاط الحالي ومراجعة الميزانية قبل نهاية اليوم.`;
-  }
-
-  if (dashboard.productivePercent >= 50) {
-    return `أداء اليوم قوي. أعلى تصنيف مستخدم هو ${highestCategory?.label || "-"}، وحصة Productive وصلت ${dashboard.productivePercent}%.`;
-  }
-
-  if (dashboard.productivePercent < 30) {
-    return `Productive أقل من 30%. حركة ذكية: شغّل نشاط مذاكرة أو عمل لمدة 25 دقيقة فقط وارفَع الزخم.`;
-  }
-
-  return `اليوم متوازن. حافظ على الإيقاع ولا تترك الوقت غير المستغل يتحول إلى سوشال بدون قصد.`;
-}
-
 function isEditingCountdownEndTime() {
   return document.activeElement === elements.countdownEndTimeInput;
 }
@@ -547,31 +588,6 @@ function renderTemplates() {
   if (selected && state.templates[selected]) {
     elements.templateSelect.value = selected;
   }
-}
-
-function renderSmartDashboard(now) {
-  const dashboard = buildDashboard(state.activities, now);
-  elements.adherenceValue.textContent = `${dashboard.adherence}%`;
-  elements.productiveValue.textContent = `${dashboard.productivePercent}%`;
-  elements.overBudgetValue.textContent = dashboard.overBudgetCount;
-  elements.unusedValue.textContent = formatHours(dashboard.unused);
-  elements.smartRecommendation.textContent = smartRecommendation(dashboard);
-
-  elements.categoryBreakdown.innerHTML = "";
-  dashboard.categoryTotals.forEach((category) => {
-    const row = document.createElement("div");
-    const usedPercent = category.budget ? Math.min(100, Math.round((category.used / category.budget) * 100)) : 0;
-    row.className = "category-row";
-    row.innerHTML = `
-      <div>
-        <strong>${category.label}</strong>
-        <small>${formatHours(category.used)} / ${formatHours(category.budget)}</small>
-      </div>
-      <div class="category-bar" aria-hidden="true"><span style="width: ${usedPercent}%"></span></div>
-      <b>${usedPercent}%</b>
-    `;
-    elements.categoryBreakdown.appendChild(row);
-  });
 }
 
 function render() {
@@ -662,9 +678,7 @@ function render() {
   elements.topActivity.textContent = top && currentUsed(top, now) > 0 ? top.name : "-";
   elements.weeklyTotal.textContent = formatHours(getWeekTotal());
   renderTemplates();
-  renderSmartDashboard(now);
-
-  saveState();
+  saveLocalState();
 }
 
 function addActivityFromForm() {
@@ -721,6 +735,58 @@ function deleteSelectedTemplate() {
   render();
 }
 
+async function loadProfile() {
+  if (!currentUser) return;
+
+  elements.accountEmail.textContent = currentUser.email || "-";
+
+  const { data, error } = await supabaseClient
+    .from("profiles")
+    .select("display_name")
+    .eq("id", currentUser.id)
+    .maybeSingle();
+
+  if (error) {
+    console.error("Profile load failed:", error.message);
+  }
+
+  const fallbackName =
+    currentUser.user_metadata?.display_name ||
+    currentUser.email ||
+    "مستخدم";
+
+  elements.accountName.textContent = data?.display_name || fallbackName;
+}
+
+async function guardDashboard() {
+  const { data } = await supabaseClient.auth.getSession();
+
+  if (!data.session) {
+    window.location.href = "index.html";
+    return false;
+  }
+
+  currentUser = data.session.user;
+  await loadProfile();
+  await loadStateFromCloud();
+  return true;
+}
+
+async function logout() {
+  pauseAll();
+  await saveStateToCloud();
+  await supabaseClient.auth.signOut();
+  window.location.href = "index.html";
+}
+
+async function initApp() {
+  const allowed = await guardDashboard();
+  if (!allowed) return;
+
+  render();
+  setInterval(render, 1000);
+}
+
 elements.form.addEventListener("submit", (event) => {
   event.preventDefault();
   addActivityFromForm();
@@ -759,6 +825,6 @@ elements.sleepEnd.addEventListener("blur", updateSleepSettings);
 elements.saveTemplateButton.addEventListener("click", saveCurrentTemplate);
 elements.applyTemplateButton.addEventListener("click", applySelectedTemplate);
 elements.deleteTemplateButton.addEventListener("click", deleteSelectedTemplate);
+elements.logoutButton.addEventListener("click", logout);
 
-render();
-setInterval(render, 1000);
+initApp();
